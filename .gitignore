@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.library/
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Streamlit
+.streamlit/config.toml
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+
+# Data files (optional)
+# 読み込んでいるCSV自体をGit管理したくない場合は、以下のコメントを外してください
+unit_layout.csv
+
+# Distribution / packaging
+dist/
+build/
