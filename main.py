@@ -12,11 +12,9 @@ st.title("台レイアウト可視化")
 
 # プロジェクト構造の定義（判断を容易にするため一箇所に集約）
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
 
 # CSV読み込み（台番号は文字列として扱う）
 csv_file = os.path.join(BASE_DIR, "unit_layout.csv")
-test_file = os.path.join(DATA_DIR, "layout_test.csv")
 
 if not os.path.exists(csv_file):
     st.error(f"エラー: '{csv_file}' が見つかりませんでした。実行中のフォルダにファイルがあるか確認してください。")
@@ -34,9 +32,11 @@ if duplicate_mask.any():
     st.warning(f"注意: レイアウトデータ (unit_layout.csv) 内で台番号が重複しています: {duplicate_list}")
 
 # ハイライト対象のCSV読み込み
+uploaded_file = st.sidebar.file_uploader("テストデータ (layout_test.csv) をアップロード", type=['csv'])
+
 test_units = set()
-if os.path.exists(test_file):
-    df_test_all = pd.read_csv(test_file, dtype={'台番号': str})
+if uploaded_file is not None:
+    df_test_all = pd.read_csv(uploaded_file, dtype={'台番号': str})
     df_test_all['台番号'] = df_test_all['台番号'].str.strip()
 
     # 日付の選択肢を取得（降順で最新を上に）
@@ -82,7 +82,7 @@ if os.path.exists(test_file):
         unmatched_list = sorted([int(x) if x == int(x) else x for x in unmatched_units])
         st.warning(f"レイアウト内に見つからなかった台番号 ({len(unmatched_units)}台): {unmatched_list}")
 else:
-    st.warning(f"'{test_file}' が見つからないため、通常色で描画します。")
+    st.info("サイドバーから CSV ファイルをアップロードしてください。現在は通常色で描画しています。")
 
 # データが読み込めているか確認用
 with st.expander("読み込んだデータを確認"):
