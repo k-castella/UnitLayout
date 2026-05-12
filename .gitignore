@@ -26,8 +26,11 @@ Thumbs.db
 
 # Data files (optional)
 # 読み込んでいるCSV自体をGit管理したくない場合は、以下のコメントを外してください
-unit_layout.csv
+data/
+#*.csv
 
 # Distribution / packaging
 dist/
 build/
+
+

@@ -10,14 +10,79 @@ import os
 st.set_page_config(page_title="Unit Layout Viewer", layout="wide")
 st.title("台レイアウト可視化")
 
+# プロジェクト構造の定義（判断を容易にするため一箇所に集約）
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+
 # CSV読み込み（台番号は文字列として扱う）
-csv_file = "unit_layout.csv"
+csv_file = os.path.join(BASE_DIR, "unit_layout.csv")
+test_file = os.path.join(DATA_DIR, "layout_test.csv")
 
 if not os.path.exists(csv_file):
     st.error(f"エラー: '{csv_file}' が見つかりませんでした。実行中のフォルダにファイルがあるか確認してください。")
     st.stop()
 
 df_layout = pd.read_csv(csv_file, dtype={'台番号': str})
+df_layout['台番号'] = df_layout['台番号'].str.strip() # 前後の空白を削除
+# 数値として比較するために数値変換した列を用意（表示用には元の文字列を使用）
+df_layout['台番号_numeric'] = pd.to_numeric(df_layout['台番号'], errors='coerce')
+
+# 台番号の重複チェック（数値として同一視されるものを含む）
+duplicate_mask = df_layout.duplicated('台番号_numeric', keep=False) & df_layout['台番号_numeric'].notna()
+if duplicate_mask.any():
+    duplicate_list = sorted(df_layout.loc[duplicate_mask, '台番号'].unique())
+    st.warning(f"注意: レイアウトデータ (unit_layout.csv) 内で台番号が重複しています: {duplicate_list}")
+
+# ハイライト対象のCSV読み込み
+test_units = set()
+if os.path.exists(test_file):
+    df_test_all = pd.read_csv(test_file, dtype={'台番号': str})
+    df_test_all['台番号'] = df_test_all['台番号'].str.strip()
+
+    # 日付の選択肢を取得（降順で最新を上に）
+    available_dates = sorted(df_test_all['日付'].unique(), reverse=True)
+    selected_date = st.sidebar.selectbox("表示対象日の選択", available_dates)
+
+    # 選択された日付のデータのみを抽出
+    df_test = df_test_all[df_test_all['日付'] == selected_date]
+    total_test_rows = len(df_test)
+    event_name = df_test['イベント名'].iloc[0] if 'イベント名' in df_test.columns else "不明なイベント"
+
+    # 比較対象も数値に変換してセットに格納
+    test_units = set(pd.to_numeric(df_test['台番号'], errors='coerce').dropna().unique())
+    
+    # レイアウト側に存在する台番号のセットを作成し、差分（一致しなかった台）を抽出
+    layout_units_set = set(df_layout['台番号_numeric'].dropna().unique())
+    unmatched_units = test_units - layout_units_set
+
+    matched_count = int(df_layout['台番号_numeric'].isin(test_units).sum())
+    st.subheader(f"対象日: {selected_date} ({event_name})")
+
+    # データの整合性チェック
+    is_all_ok = (total_test_rows == len(test_units) == matched_count)
+
+    if is_all_ok:
+        st.success(f"✅ 全 {matched_count} 台のデータが正常に一致しました。")
+    else:
+        st.error("⚠️ データに不一致があります。内容を確認してください。")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("CSVデータ総数", f"{total_test_rows} 件")
+        with col2:
+            invalid_diff = len(test_units) - total_test_rows
+            st.metric("有効な台数", f"{len(test_units)} 台", 
+                      delta=f"{invalid_diff} (重複/無効)" if invalid_diff != 0 else None, delta_color="inverse")
+        with col3:
+            missing_diff = matched_count - len(test_units)
+            st.metric("レイアウト一致", f"{matched_count} 台", 
+                      delta=f"{missing_diff} (未配置)" if missing_diff != 0 else None, delta_color="inverse")
+
+    if unmatched_units:
+        # 表示用に数値をソートし、整数は整数の形式でリスト化
+        unmatched_list = sorted([int(x) if x == int(x) else x for x in unmatched_units])
+        st.warning(f"レイアウト内に見つからなかった台番号 ({len(unmatched_units)}台): {unmatched_list}")
+else:
+    st.warning(f"'{test_file}' が見つからないため、通常色で描画します。")
 
 # データが読み込めているか確認用
 with st.expander("読み込んだデータを確認"):
@@ -27,7 +92,7 @@ with st.expander("読み込んだデータを確認"):
 zoom_level = st.sidebar.slider("ズーム倍率 (1.0で画面幅にフィット)", min_value=0.5, max_value=8.0, value=1.0, step=0.1)
 
 # Matplotlibを使ってSVGを作成する関数
-def create_layout_svg(df):
+def create_layout_svg(df, highlight_units):
     # 座標の範囲を取得
     min_x, max_x = df['座標X'].min(), df['座標X'].max()
     min_y, max_y = df['座標Y'].min(), df['座標Y'].max()
@@ -42,10 +107,14 @@ def create_layout_svg(df):
     u_w, u_h = 4.0, 4.0 
     
     for _, row in df.iterrows():
+        # 台番号がテスト用リストに含まれているかチェック
+        is_highlight = row['台番号_numeric'] in highlight_units
+        box_color = 'OrangeRed' if is_highlight else 'RoyalBlue'
+
         # 四角形の描画
         rect = patches.Rectangle(
             (row['座標X'] - u_w/2, row['座標Y'] - u_h/2), 
-            u_w, u_h, facecolor='RoyalBlue', edgecolor='white', linewidth=0.5
+            u_w, u_h, facecolor=box_color, edgecolor='white', linewidth=0.5
         )
         ax.add_patch(rect)
         
@@ -65,7 +134,7 @@ def create_layout_svg(df):
     plt.close(fig)
     return buf.getvalue()
 
-svg_bytes = create_layout_svg(df_layout)
+svg_bytes = create_layout_svg(df_layout, test_units)
 
 # SVGバイト列をBase64文字列に変換してData URIを作成します。
 # これにより、Pillowの画像形式判定を回避し、ブラウザ側でSVGをレンダリングさせます。
