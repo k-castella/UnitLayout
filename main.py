@@ -32,55 +32,73 @@ if duplicate_mask.any():
     st.warning(f"注意: レイアウトデータ (unit_layout.csv) 内で台番号が重複しています: {duplicate_list}")
 
 # ハイライト対象のCSV読み込み
-uploaded_file = st.sidebar.file_uploader("テストデータ (layout_test.csv) をアップロード", type=['csv'])
+st.sidebar.markdown("---")
+uploaded_file = st.sidebar.file_uploader(
+    "テストデータ (layout_test.csv) をアップロード", 
+    type=['csv', 'txt'],
+    help="スマホでファイルが選択できない場合は、クラウド（マイドライブ等）から直接選ばず、一度端末に『ダウンロード』してから、そのファイルを選択してください。"
+)
 
 test_units = set()
 if uploaded_file is not None:
-    df_test_all = pd.read_csv(uploaded_file, dtype={'台番号': str})
-    df_test_all['台番号'] = df_test_all['台番号'].str.strip()
+    try:
+        # 日本語環境(Excel)で保存されたCSVでも読み込めるようエンコーディングを自動調整
+        try:
+            df_test_all = pd.read_csv(uploaded_file, dtype={'台番号': str})
+        except UnicodeDecodeError:
+            uploaded_file.seek(0)
+            df_test_all = pd.read_csv(uploaded_file, dtype={'台番号': str}, encoding='cp932')
+        
+        df_test_all['台番号'] = df_test_all['台番号'].str.strip()
 
-    # 日付の選択肢を取得（降順で最新を上に）
-    available_dates = sorted(df_test_all['日付'].unique(), reverse=True)
-    selected_date = st.sidebar.selectbox("表示対象日の選択", available_dates)
+        # 必須カラムの存在チェック
+        if '日付' not in df_test_all.columns:
+            st.error("アップロードされたCSVに『日付』列が見つかりません。")
+        else:
+            # 日付の選択肢を取得（降順で最新を上に）
+            available_dates = sorted(df_test_all['日付'].unique(), reverse=True)
+            selected_date = st.sidebar.selectbox("表示対象日の選択", available_dates)
 
-    # 選択された日付のデータのみを抽出
-    df_test = df_test_all[df_test_all['日付'] == selected_date]
-    total_test_rows = len(df_test)
-    event_name = df_test['イベント名'].iloc[0] if 'イベント名' in df_test.columns else "不明なイベント"
+            # 選択された日付のデータのみを抽出
+            df_test = df_test_all[df_test_all['日付'] == selected_date]
+            total_test_rows = len(df_test)
+            event_name = df_test['イベント名'].iloc[0] if 'イベント名' in df_test.columns else "不明なイベント"
 
-    # 比較対象も数値に変換してセットに格納
-    test_units = set(pd.to_numeric(df_test['台番号'], errors='coerce').dropna().unique())
-    
-    # レイアウト側に存在する台番号のセットを作成し、差分（一致しなかった台）を抽出
-    layout_units_set = set(df_layout['台番号_numeric'].dropna().unique())
-    unmatched_units = test_units - layout_units_set
+            # 比較対象も数値に変換してセットに格納
+            test_units = set(pd.to_numeric(df_test['台番号'], errors='coerce').dropna().unique())
+            
+            # レイアウト側に存在する台番号のセットを作成し、差分（一致しなかった台）を抽出
+            layout_units_set = set(df_layout['台番号_numeric'].dropna().unique())
+            unmatched_units = test_units - layout_units_set
 
-    matched_count = int(df_layout['台番号_numeric'].isin(test_units).sum())
-    st.subheader(f"対象日: {selected_date} ({event_name})")
+            matched_count = int(df_layout['台番号_numeric'].isin(test_units).sum())
+            st.subheader(f"対象日: {selected_date} ({event_name})")
 
-    # データの整合性チェック
-    is_all_ok = (total_test_rows == len(test_units) == matched_count)
+            # データの整合性チェック
+            is_all_ok = (total_test_rows == len(test_units) == matched_count)
 
-    if is_all_ok:
-        st.success(f"✅ 全 {matched_count} 台のデータが正常に一致しました。")
-    else:
-        st.error("⚠️ データに不一致があります。内容を確認してください。")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("CSVデータ総数", f"{total_test_rows} 件")
-        with col2:
-            invalid_diff = len(test_units) - total_test_rows
-            st.metric("有効な台数", f"{len(test_units)} 台", 
-                      delta=f"{invalid_diff} (重複/無効)" if invalid_diff != 0 else None, delta_color="inverse")
-        with col3:
-            missing_diff = matched_count - len(test_units)
-            st.metric("レイアウト一致", f"{matched_count} 台", 
-                      delta=f"{missing_diff} (未配置)" if missing_diff != 0 else None, delta_color="inverse")
+            if is_all_ok:
+                st.success(f"✅ 全 {matched_count} 台のデータが正常に一致しました。")
+            else:
+                st.error("⚠️ データに不一致があります。内容を確認してください。")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("CSVデータ総数", f"{total_test_rows} 件")
+                with col2:
+                    invalid_diff = len(test_units) - total_test_rows
+                    st.metric("有効な台数", f"{len(test_units)} 台", 
+                              delta=f"{invalid_diff} (重複/無効)" if invalid_diff != 0 else None, delta_color="inverse")
+                with col3:
+                    missing_diff = matched_count - len(test_units)
+                    st.metric("レイアウト一致", f"{matched_count} 台", 
+                              delta=f"{missing_diff} (未配置)" if missing_diff != 0 else None, delta_color="inverse")
 
-    if unmatched_units:
-        # 表示用に数値をソートし、整数は整数の形式でリスト化
-        unmatched_list = sorted([int(x) if x == int(x) else x for x in unmatched_units])
-        st.warning(f"レイアウト内に見つからなかった台番号 ({len(unmatched_units)}台): {unmatched_list}")
+            if unmatched_units:
+                # 表示用に数値をソートし、整数は整数の形式でリスト化
+                unmatched_list = sorted([int(x) if x == int(x) else x for x in unmatched_units])
+                st.warning(f"レイアウト内に見つからなかった台番号 ({len(unmatched_units)}台): {unmatched_list}")
+    except Exception as e:
+        st.error(f"ファイルの読み込み中にエラーが発生しました: {e}")
 else:
     st.info("サイドバーから CSV ファイルをアップロードしてください。現在は通常色で描画しています。")
 
