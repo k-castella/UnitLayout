@@ -34,15 +34,22 @@ if duplicate_mask.any():
 # ハイライト対象のCSV読み込み
 st.sidebar.markdown("---")
 uploaded_file = st.sidebar.file_uploader(
-    "テストデータ (layout_test.csv) をアップロード", 
-    type=['csv', 'txt'],
-    help="スマホでファイルが選択できない場合は、クラウド（マイドライブ等）から直接選ばず、一度端末に『ダウンロード』してから、そのファイルを選択してください。"
+    "CSVデータをアップロード", 
+    type=None,  # 制限を外してOSのファイルピッカーに全てのファイルを表示させる
+    help="**【スマホでドライブ上のファイルを選びたい場合】**\n\nファイル選択画面で『ドライブ』や『ファイル』アプリを選択してください。\nもし選択しても反応がない場合は、一度端末に『ダウンロード』してから選択してください。"
 )
 
 test_units = set()
 if uploaded_file is not None:
     try:
+        # ファイル形式の簡易チェック
+        file_ext = os.path.splitext(uploaded_file.name)[1].lower()
+        if file_ext not in ['.csv', '.txt']:
+            st.error(f"エラー: CSVまたはテキストファイルをアップロードしてください (選択されたファイル: {uploaded_file.name})")
+            st.stop()
+
         # 日本語環境(Excel)で保存されたCSVでも読み込めるようエンコーディングを自動調整
+        uploaded_file.seek(0)
         try:
             df_test_all = pd.read_csv(uploaded_file, dtype={'台番号': str})
         except UnicodeDecodeError:
