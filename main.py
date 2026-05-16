@@ -13,14 +13,38 @@ st.title("台レイアウト可視化")
 # プロジェクト構造の定義（判断を容易にするため一箇所に集約）
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# レイアウトファイルのアップロード（デフォルトはunit_layout.csv）
+st.sidebar.markdown("### レイアウトファイル")
+layout_file = st.sidebar.file_uploader(
+    "レイアウトCSVをアップロード（任意）",
+    type=None,
+    help="レイアウトファイルを指定しない場合は、unit_layout.csvを使用します。"
+)
+
 # CSV読み込み（台番号は文字列として扱う）
-csv_file = os.path.join(BASE_DIR, "unit_layout.csv")
+if layout_file is not None:
+    try:
+        file_ext = os.path.splitext(layout_file.name)[1].lower()
+        if file_ext not in ['.csv', '.txt']:
+            st.error(f"エラー: CSVまたはテキストファイルをアップロードしてください (選択されたファイル: {layout_file.name})")
+            st.stop()
 
-if not os.path.exists(csv_file):
-    st.error(f"エラー: '{csv_file}' が見つかりませんでした。実行中のフォルダにファイルがあるか確認してください。")
-    st.stop()
+        layout_file.seek(0)
+        try:
+            df_layout = pd.read_csv(layout_file, dtype={'台番号': str})
+        except UnicodeDecodeError:
+            layout_file.seek(0)
+            df_layout = pd.read_csv(layout_file, dtype={'台番号': str}, encoding='cp932')
+    except Exception as e:
+        st.error(f"レイアウトファイルの読み込み中にエラーが発生しました: {e}")
+        st.stop()
+else:
+    csv_file = os.path.join(BASE_DIR, "unit_layout.csv")
+    if not os.path.exists(csv_file):
+        st.error(f"エラー: '{csv_file}' が見つかりませんでした。実行中のフォルダにファイルがあるか確認してください。")
+        st.stop()
+    df_layout = pd.read_csv(csv_file, dtype={'台番号': str})
 
-df_layout = pd.read_csv(csv_file, dtype={'台番号': str})
 df_layout['台番号'] = df_layout['台番号'].str.strip() # 前後の空白を削除
 # 数値として比較するために数値変換した列を用意（表示用には元の文字列を使用）
 df_layout['台番号_numeric'] = pd.to_numeric(df_layout['台番号'], errors='coerce')
@@ -29,12 +53,14 @@ df_layout['台番号_numeric'] = pd.to_numeric(df_layout['台番号'], errors='c
 duplicate_mask = df_layout.duplicated('台番号_numeric', keep=False) & df_layout['台番号_numeric'].notna()
 if duplicate_mask.any():
     duplicate_list = sorted(df_layout.loc[duplicate_mask, '台番号'].unique())
-    st.warning(f"注意: レイアウトデータ (unit_layout.csv) 内で台番号が重複しています: {duplicate_list}")
+    layout_source = layout_file.name if layout_file is not None else "unit_layout.csv"
+    st.warning(f"注意: レイアウトデータ ({layout_source}) 内で台番号が重複しています: {duplicate_list}")
 
 # ハイライト対象のCSV読み込み
 st.sidebar.markdown("---")
+st.sidebar.markdown("### テストデータ")
 uploaded_file = st.sidebar.file_uploader(
-    "CSVデータをアップロード", 
+    "CSVデータをアップロード",
     type=None,  # 制限を外してOSのファイルピッカーに全てのファイルを表示させる
     help="**【スマホでドライブ上のファイルを選びたい場合】**\n\nファイル選択画面で『ドライブ』や『ファイル』アプリを選択してください。\nもし選択しても反応がない場合は、一度端末に『ダウンロード』してから選択してください。"
 )
