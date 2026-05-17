@@ -196,7 +196,7 @@ svg_url = f"data:image/svg+xml;base64,{b64_svg}"
 components.html(
     f"""
     <div style="overflow: auto; max-height: 80vh; border: 1px solid #ddd; background-color: #f0f0f0;" id="svg-container">
-        <img src="{svg_url}" id="svg-image" style="width: 100%; max-width: none; transition: width 0.1s ease-out;">
+        <img src="{svg_url}" id="svg-image" style="width: 100%; max-width: none;">
     </div>
     <div style="margin-top: 10px;">
         <button id="reset-zoom" style="padding: 8px 16px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
@@ -229,12 +229,15 @@ components.html(
             const delta = e.deltaY > 0 ? -0.1 : 0.1;
             const newZoom = Math.max(0.5, Math.min(8.0, currentZoom + delta));
             
-            // ズーム後の画像幅
+            // ズーム後の画像幅を計算（コンテナ幅に対する割合）
+            const containerWidth = container.offsetWidth;
+            const newWidth = containerWidth * newZoom;
+            
+            // 画像幅を更新
             image.style.width = (newZoom * 100) + '%';
-            const newWidth = image.offsetWidth;
             
             // マウス位置を基準にスクロール位置を調整
-            const widthRatio = newWidth / oldWidth;
+            const widthRatio = newZoom / currentZoom;
             container.scrollLeft = (scrollLeft + mouseX) * widthRatio - mouseX;
             container.scrollTop = (scrollTop + mouseY) * widthRatio - mouseY;
             
