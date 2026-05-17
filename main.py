@@ -5,6 +5,7 @@ import matplotlib.patches as patches
 import base64
 import io
 import os
+import streamlit.components.v1 as components
 
 # ページの設定
 st.set_page_config(page_title="Unit Layout Viewer", layout="wide")
@@ -139,9 +140,6 @@ else:
 with st.expander("読み込んだデータを確認"):
     st.write(df_layout.head())
 
-# サイドバーで「表示上の大きさ」を調整できるようにする
-zoom_level = st.sidebar.slider("ズーム倍率 (1.0で画面幅にフィット)", min_value=0.5, max_value=8.0, value=1.0, step=0.1)
-
 # Matplotlibを使ってSVGを作成する関数
 def create_layout_svg(df, highlight_units):
     # 座標の範囲を取得
@@ -155,7 +153,7 @@ def create_layout_svg(df, highlight_units):
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
     
     # 1台のサイズ（CSVの座標間隔が5程度なので、3.5x3.5くらいが適切）
-    u_w, u_h = 4.0, 4.0 
+    u_w, u_h = 5.0, 5.0 
     
     for _, row in df.iterrows():
         # 台番号がテスト用リストに含まれているかチェック
@@ -172,7 +170,7 @@ def create_layout_svg(df, highlight_units):
         # 台番号の描画（SVGなので、拡大時にこのテキストも一緒に大きくなる）
         ax.text(
             row['座標X'], row['座標Y'], row['台番号'],
-            color='white', ha='center', va='center', fontsize=7, fontweight='bold'
+            color='white', ha='center', va='center', fontsize=16, fontweight='bold'
         )
 
     ax.set_xlim(min_x - 10, max_x + 10)
@@ -194,11 +192,63 @@ svg_url = f"data:image/svg+xml;base64,{b64_svg}"
 
 # width を固定ピクセルではなく「%」にすることで、初期状態(1.0)でスマホ・PCそれぞれの画面幅に自動フィットさせます。
 # ズームを上げると 100% を超えるため、スクロールが発生してPDFのような挙動になります。
-st.markdown(
+# マウスホイールでのズーム機能を追加（マウス位置基準）
+components.html(
     f"""
-    <div style="overflow: auto; max-height: 80vh; border: 1px solid #ddd; background-color: #f0f0f0;">
-        <img src="{svg_url}" style="width: {int(zoom_level * 100)}%; max-width: none;">
+    <div style="overflow: auto; max-height: 80vh; border: 1px solid #ddd; background-color: #f0f0f0;" id="svg-container">
+        <img src="{svg_url}" id="svg-image" style="width: 100%; max-width: none; transition: width 0.1s ease-out;">
     </div>
+    <div style="margin-top: 10px;">
+        <button id="reset-zoom" style="padding: 8px 16px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
+            ズームをリセット (1.0倍)
+        </button>
+    </div>
+    <script>
+        const container = document.getElementById('svg-container');
+        const image = document.getElementById('svg-image');
+        const resetButton = document.getElementById('reset-zoom');
+        let currentZoom = 1.0;
+        
+        // マウスホイールでのズーム（マウス位置基準）
+        container.addEventListener('wheel', function(e) {{
+            e.preventDefault();
+            
+            // マウスのコンテナ内での相対位置を取得
+            const rect = container.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            // 現在のスクロール位置
+            const scrollLeft = container.scrollLeft;
+            const scrollTop = container.scrollTop;
+            
+            // ズーム前の画像幅
+            const oldWidth = image.offsetWidth;
+            
+            // ホイールの方向に応じてズーム
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            const newZoom = Math.max(0.5, Math.min(8.0, currentZoom + delta));
+            
+            // ズーム後の画像幅
+            image.style.width = (newZoom * 100) + '%';
+            const newWidth = image.offsetWidth;
+            
+            // マウス位置を基準にスクロール位置を調整
+            const widthRatio = newWidth / oldWidth;
+            container.scrollLeft = (scrollLeft + mouseX) * widthRatio - mouseX;
+            container.scrollTop = (scrollTop + mouseY) * widthRatio - mouseY;
+            
+            currentZoom = newZoom;
+        }}, {{ passive: false }});
+        
+        // リセットボタン
+        resetButton.addEventListener('click', function() {{
+            currentZoom = 1.0;
+            image.style.width = '100%';
+            container.scrollLeft = 0;
+            container.scrollTop = 0;
+        }});
+    </script>
     """,
-    unsafe_allow_html=True
+    height=650
 )
